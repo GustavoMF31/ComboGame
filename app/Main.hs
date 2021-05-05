@@ -671,11 +671,14 @@ main = do
 TODO
     New enemies should walk in
     Enemies should have an attack animation
+    Hitflash when an attack lands
+        Both the player's and the enemy's
 
     Attack pose: 1 missing
         - Dragon ball like hit with two hands
 
     Goal: 5 Levels
+        (Estimating 10 to 12 encounters each)
     Goal: 10 enemies
 
     Title screen
