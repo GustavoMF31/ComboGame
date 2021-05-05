@@ -675,8 +675,8 @@ TODO
     Attack pose: 1 missing
         - Dragon ball like hit with two hands
 
-    More enemies
-    Goal: 10 enemies?
+    Goal: 5 Levels
+    Goal: 10 enemies
 
     Title screen
     You beat the level! screen
