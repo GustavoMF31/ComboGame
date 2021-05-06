@@ -1,8 +1,9 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
+{-# OPTIONS_GHC -Werror=missing-fields #-}
+
 {-# LANGUAGE OverloadedStrings #-}
 
 import Control.Monad (when, (<=<), guard, join)
-import Control.Applicative ((*>))
 import Data.Foldable (traverse_)
 import Data.Maybe (mapMaybe, listToMaybe, fromMaybe, isNothing, isJust)
 import Data.Bool (bool)
@@ -165,6 +166,7 @@ data GameState = MkGameState
     , currentAttack :: Maybe ComboKey
     , hitsTakenDueToCurrentEnemy :: Nat
     , hitEffectInProgress :: Maybe Nat
+    , enemyWalkInTimer :: Maybe Nat -- Nothing means the enemy is not walking in
     }
 
 enemyTexture :: Enemy -> TextureData -> Texture
@@ -279,6 +281,7 @@ initialGameState = MkGameState
     , currentAttack = Nothing
     , hitsTakenDueToCurrentEnemy = nat 0
     , hitEffectInProgress = Nothing
+    , enemyWalkInTimer = Just enemyWalkInDuration
     }
   where
     initialEnemy = Rat
@@ -332,6 +335,9 @@ processComboKey keysLeft key = if key == NonEmpty.head keysLeft
 flyingEnemyEffectTime :: Nat
 flyingEnemyEffectTime = nat 500
 
+enemyWalkInDuration :: Nat
+enemyWalkInDuration = nat 300
+
 update :: [Event] -> Nat -> GameState -> (GameState, [Sound])
 update events delta gameState = (MkGameState
     { comboKeysLeft = if comboTimeOut then comboToDefeat (currentEnemy gameState) else keysOfTheComboLeft
@@ -340,7 +346,14 @@ update events delta gameState = (MkGameState
     , currentEncounter = maybe (currentEncounter gameState) fst newEnemies
     , playerHealth = fromMaybe (error "player dead") $ natMinus (playerHealth gameState) $ bool (nat 0) (nat 1) enemyAttacked
     -- Reset the enemy attack timer whenever the enemy attacks or dies
-    , enemyAttackTimer = fromMaybe timeBetweenEnemyAttacks (guard (isNothing $ newEnemies) *> updatedEnemyTimer)
+    , enemyAttackTimer = case updatedEnemyTimer of
+                             Nothing -> timeBetweenEnemyAttacks
+                             Just t -> if isJust newEnemies
+                                          then timeBetweenEnemyAttacks -- If the player killed an enemy, the timer resets
+                                          else if isJust (timeUntilComboTimeout gameState) -- If the player is attacking
+                                                  then enemyAttackTimer gameState -- freeze the enemyAttackTimer
+                                                  else t -- otherwise keep it going
+                            -- fromMaybe timeBetweenEnemyAttacks (guard (isNothing newEnemies && isNothing (timeUntilComboTimeout gameState)) *> updatedEnemyTimer)
     , timeUntilComboTimeout = if killedEnemy then Nothing else
                                 if currentKeySucceeded
                                     then Just maxTimeBetweenComboKeys
@@ -363,7 +376,11 @@ update events delta gameState = (MkGameState
                                     then nat 0
                                     else natAdd (hitsTakenDueToCurrentEnemy gameState) (nat $ if enemyAttacked then 1 else 0)
     , hitEffectInProgress = if currentKeySucceeded then Just hitEffectDuration else updateTimer $ hitEffectInProgress gameState
-    }, maybe [] (\key -> if currentKeySucceeded then [attackSoundForKey key] else []) keyPressed)
+    , enemyWalkInTimer = if isJust newEnemies then Just enemyWalkInDuration else updateTimer $ enemyWalkInTimer gameState
+    },
+        maybe [] (\key -> if currentKeySucceeded then [attackSoundForKey key] else []) keyPressed
+     ++ maybe [hit0] (const []) updatedEnemyTimer
+    )
         
   where
     keysPressed :: [ComboKey]
@@ -503,12 +520,28 @@ render textures renderer windowDimensions gameState = do
         map (* grassTileSize) [0..5]
 
     -- Enemy
-    let enemyXOffsetRatio :: Double
-        enemyXOffsetRatio = negate $ windupThenAttackEase $ 1 - natAsDouble (enemyAttackTimer gameState) / natAsDouble timeBetweenEnemyAttacks
+    let
+        enemyAttackAnimationFraction :: Double
+        enemyAttackAnimationFraction = natAsDouble (enemyAttackTimer gameState) / natAsDouble timeBetweenEnemyAttacks
+
+        animationTimeSpeedup :: Double
+        animationTimeSpeedup = 3
+
+        enemyXOffset' :: Double -- Does not take into account the walking in animation
+        enemyXOffset'
+            | isJust (timeUntilComboTimeout gameState) = 0
+            | enemyAttackAnimationFraction < recip animationTimeSpeedup = negate $ windupThenAttackEase $ 1 - animationTimeSpeedup * enemyAttackAnimationFraction
+            | otherwise = 0
+
+        enemyXOffset :: Double
+        enemyXOffset = case enemyWalkInTimer gameState of
+            Nothing -> 900 * enemyXOffset' -- The distance from the enemy to the player is of about 900 pixels
+            Just t -> let walkInAnimationRatio = natAsDouble t / natAsDouble enemyWalkInDuration
+                in 500 * walkInAnimationRatio
 
     copy renderer (enemyTexture (currentEnemy gameState) textures) Nothing $ Just $
         -- Rectangle (P $ V2 (1000 + round (enemyXOffsetRatio * 900)) (enemyY $ currentEnemy gameState)) (enemySize $ currentEnemy gameState)
-        Rectangle (P $ V2 1000 (enemyY $ currentEnemy gameState)) (enemySize $ currentEnemy gameState)
+        Rectangle (P $ V2 (round $ 1000 + enemyXOffset) (enemyY $ currentEnemy gameState)) (enemySize $ currentEnemy gameState)
 
     -- Fighter
     let fighterTopLeft = P $ V2 (-150) 100
@@ -669,11 +702,6 @@ main = do
 
 {-
 TODO
-    New enemies should walk in
-    Enemies should have an attack animation
-    Hitflash when an attack lands
-        Both the player's and the enemy's
-
     Attack pose: 1 missing
         - Dragon ball like hit with two hands
 
