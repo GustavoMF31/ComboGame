@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 {-# OPTIONS_GHC -Werror=missing-fields #-}
 
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 
 import Control.Monad (when, (<=<), guard, join)
 import Data.Foldable (traverse_)
@@ -12,7 +12,7 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Functor (($>))
 
 import Foreign.C.Types (CInt, CDouble(CDouble))
-import Data.Word (Word32)
+import Data.Word (Word32, Word8)
 import Numeric.Natural (Natural)
 
 import Nat (Nat, nat, natMinus, natAsDouble, natAdd, monus)
@@ -25,6 +25,9 @@ import qualified SDL.Mixer as Mix
 getScancode :: KeyboardEventData -> Scancode
 getScancode = keysymScancode . keyboardEventKeysym
 
+getKeycode :: KeyboardEventData -> Keycode
+getKeycode = keysymKeycode . keyboardEventKeysym
+
 getKeyboardEvent :: EventPayload -> Maybe KeyboardEventData
 getKeyboardEvent (KeyboardEvent event) = Just event
 getKeyboardEvent _ = Nothing 
@@ -34,7 +37,9 @@ shouldQuit = any $ (QuitEvent ==) . eventPayload
 
 type Combo = NonEmpty ComboKey
 data Enemy = Rat | BlueRat | GreenRat | Spider | PurpleSpider | RedSpider | Clone | GrassTileEnemy
+    deriving (Show)
 data EnemyEncounter = MkEnemyEncounter { encounterEnemy :: Enemy, hitsTakenBeforeShowingHint :: Nat }
+    deriving (Show)
 
 data TextureData = MkTextureData
     { fighterIdle :: Texture
@@ -140,7 +145,7 @@ data FlyingEnemyEffect = MkFlyingEnemyEffect
     , angle :: Double
     , angularVelocity :: Double
     , timeUntilDisappearing :: Nat
-    }
+    } deriving (Show)
 
 updateEffect :: Nat -> FlyingEnemyEffect -> Maybe FlyingEnemyEffect
 updateEffect delta effect = fmap (\newTimeUntilDisappearing ->
@@ -149,6 +154,17 @@ updateEffect delta effect = fmap (\newTimeUntilDisappearing ->
 
 hitEffectDuration :: Nat
 hitEffectDuration = nat 200
+
+type Level = NonEmpty EnemyEncounter
+
+data LevelZipper = MkLevelZipper [Level] Level [Level]
+    deriving (Show)
+
+currentLevel :: LevelZipper -> Level
+currentLevel (MkLevelZipper _ current _) = current
+
+data Scene = TitleScreen | InGame LevelZipper GameState | LevelWonScreen LevelZipper | GameWonScreen
+    deriving (Show)
 
 data GameState = MkGameState
     { comboKeysLeft :: Combo
@@ -167,7 +183,7 @@ data GameState = MkGameState
     , hitsTakenDueToCurrentEnemy :: Nat
     , hitEffectInProgress :: Maybe Nat
     , enemyWalkInTimer :: Maybe Nat -- Nothing means the enemy is not walking in
-    }
+    } deriving (Show)
 
 enemyTexture :: Enemy -> TextureData -> Texture
 enemyTexture Rat = ratSprite
@@ -237,13 +253,16 @@ timeBetweenEnemyAttacks = nat 2000
 maxTimeBetweenComboKeys :: Nat
 maxTimeBetweenComboKeys = nat 500
 
-level :: [(Enemy, Natural)] -> [EnemyEncounter]
-level = map (uncurry $ flip $ flip MkEnemyEncounter . nat)
+mkLevel :: Functor f => f (Enemy, Natural) -> f EnemyEncounter
+mkLevel = fmap (uncurry $ flip $ flip MkEnemyEncounter . nat)
 
-firstLevel :: [EnemyEncounter]
-firstLevel = level
-    [ (Rat, 0)
-    , (Rat, 1)
+allLevels :: LevelZipper
+allLevels = MkLevelZipper [] testLevel [firstLevel]
+
+firstLevel :: NonEmpty EnemyEncounter
+firstLevel = mkLevel $
+      (Rat, 0) :|
+    [ (Rat, 1)
     , (Rat, 2)
     , (BlueRat, 0)
     , (BlueRat, 2)
@@ -255,23 +274,25 @@ firstLevel = level
     , (BlueRat, 3)
     ]
 
-initialGameState :: GameState
-initialGameState = MkGameState
+initialScene :: Scene
+initialScene = TitleScreen
+
+testLevel :: Level
+testLevel = mkLevel $
+      (Clone, 0) :|
+    [ (RedSpider, 0)
+    , (GreenRat, 0)
+    , (PurpleSpider, 0)
+    , (Rat, 0)
+    , (Spider, 0)
+    -- , GrassTileEnemy
+    ]
+
+loadLevel :: Level -> GameState
+loadLevel level = MkGameState
     { comboKeysLeft = comboToDefeat initialEnemy
     , currentEncounter = initialEncounter
-    , nextEncounters = level -- firstLevel
-        [ (Clone, 0)
-        , (RedSpider, 0)
-        , (GreenRat, 0)
-        , (PurpleSpider, 0)
-        , (Rat, 0)
-        , (Spider, 0)
-        ]
-    {-
-    -}
-        -- , Clone
-        -- , GrassTileEnemy
-
+    , nextEncounters = NonEmpty.tail level
     , playerHealth = maxHealth
     , enemyAttackTimer = timeBetweenEnemyAttacks
     , timeSinceStart = nat 0
@@ -284,8 +305,8 @@ initialGameState = MkGameState
     , enemyWalkInTimer = Just enemyWalkInDuration
     }
   where
-    initialEnemy = Rat
-    initialEncounter = MkEnemyEncounter initialEnemy $ nat 0
+    initialEnemy = encounterEnemy initialEncounter
+    initialEncounter = NonEmpty.head $ level
 
 ensure :: (a -> Bool) -> a -> Maybe a
 ensure p a = guard (p a) $> a
@@ -319,6 +340,9 @@ comboKeyAsScancode KeyM = ScancodeM
 comboKeyAsScancode KeyComma = ScancodeComma
 comboKeyAsScancode KeyPeriod = ScancodePeriod
 
+isEnterPressed :: [Event] -> Bool
+isEnterPressed = not . null . (mapMaybe $ ensure (== KeycodeReturn) <=< fmap getKeycode . ensure isPressed <=< getKeyboardEvent . eventPayload)
+
 getComboInputs :: [Event] -> [ComboKey]
 getComboInputs = mapMaybe $ asComboKey <=< fmap getScancode . ensure isPressed <=< getKeyboardEvent . eventPayload
 
@@ -338,8 +362,28 @@ flyingEnemyEffectTime = nat 500
 enemyWalkInDuration :: Nat
 enemyWalkInDuration = nat 300
 
-update :: [Event] -> Nat -> GameState -> (GameState, [Sound])
-update events delta gameState = (MkGameState
+nextLevel :: LevelZipper -> Maybe LevelZipper
+nextLevel (MkLevelZipper past current (next : nexts)) = Just $ MkLevelZipper (current : past) next nexts
+nextLevel _ = Nothing
+
+updateScene :: [Event] -> Nat -> Scene -> (Scene, [Sound])
+updateScene events delta scene = case scene of
+    InGame gameState levelZipper -> update events delta gameState levelZipper
+    TitleScreen -> if isEnterPressed events
+        then (InGame allLevels (loadLevel $ currentLevel allLevels), [])
+        else (TitleScreen, [])
+    LevelWonScreen levelZipper -> (, []) $ if isEnterPressed events
+        then InGame levelZipper (loadLevel $ currentLevel levelZipper)
+        else LevelWonScreen levelZipper
+    GameWonScreen -> (, []) $ if isEnterPressed events
+        then TitleScreen
+        else GameWonScreen
+
+update :: [Event] -> Nat -> LevelZipper -> GameState -> (Scene, [Sound])
+update events delta levelZipper gameState = maybe ((, []) $ maybe GameWonScreen LevelWonScreen $ nextLevel levelZipper) (\(keysOfTheComboLeft, currentKeySucceeded, newEnemies) ->
+    let killedEnemy :: Bool
+        killedEnemy = isJust newEnemies
+    in (InGame levelZipper MkGameState
     { comboKeysLeft = if comboTimeOut then comboToDefeat (currentEnemy gameState) else keysOfTheComboLeft
     , nextEncounters = maybe (nextEncounters gameState) snd newEnemies
     , timeSinceStart = natAdd (nat 1) $ timeSinceStart gameState
@@ -380,7 +424,7 @@ update events delta gameState = (MkGameState
     },
         maybe [] (\key -> if currentKeySucceeded then [attackSoundForKey key] else []) keyPressed
      ++ maybe [hit0] (const []) updatedEnemyTimer
-    )
+    )) keyPressResult
         
   where
     keysPressed :: [ComboKey]
@@ -393,22 +437,17 @@ update events delta gameState = (MkGameState
     --   the new comboKeysLeft
     --   A bool indicating if the key press succeeded (If there wasn't one, it's False)
     --   possibly a pair of new currentEnemy and new nextEnemies
-    keyPressResult :: (Combo, Bool, Maybe (EnemyEncounter, [EnemyEncounter]))
+    keyPressResult :: Maybe (Combo, Bool, Maybe (EnemyEncounter, [EnemyEncounter]))
     keyPressResult = case keyPressed of
-        Nothing  -> (comboKeysLeft gameState, False, Nothing)
+        Nothing  -> Just (comboKeysLeft gameState, False, Nothing)
         Just key -> case processComboKey (comboKeysLeft gameState) key of
-            Nothing -> (comboToDefeat $ currentEnemy gameState, False, Nothing)
+            Nothing -> Just (comboToDefeat $ currentEnemy gameState, False, Nothing)
             Just newComboKeysLeft -> case nonEmpty newComboKeysLeft of
                 -- If there are no combo keys left, the player has beaten the enemy
                 Nothing -> case nextEncounters gameState of
-                    [] -> error "Out of enemies"
-                    (x:xs) -> (comboToDefeat $ encounterEnemy x, True, Just (x, xs))
-                Just xs -> (xs, True, Nothing)
-
-    (keysOfTheComboLeft, currentKeySucceeded, newEnemies) = keyPressResult
-
-    killedEnemy :: Bool
-    killedEnemy = isJust newEnemies
+                    [] -> Nothing -- No new enemies left! Let's return Nothing to signal the level won screen should start
+                    (x:xs) -> Just (comboToDefeat $ encounterEnemy x, True, Just (x, xs))
+                Just xs -> Just (xs, True, Nothing)
 
     resetCurrentAttackIfNecessary :: Maybe ComboKey
     resetCurrentAttackIfNecessary = wasReleased <$> currentAttack gameState <*> pure events
@@ -435,21 +474,22 @@ update events delta gameState = (MkGameState
 alreadyPressed :: GameState -> [ComboKey]
 alreadyPressed g = reverse $ drop (length $ comboKeysLeft g) $ reverse $ NonEmpty.toList $ comboToDefeat (currentEnemy g)
 
-gameLoop :: Renderer -> TextureData -> AudioData -> V2 CInt -> Word32 -> GameState -> IO ()
-gameLoop renderer textures audioData windowDimensions ticksSinceLastUpdate gameState = do
+gameLoop :: Renderer -> TextureData -> AudioData -> V2 CInt -> Word32 -> Scene -> IO ()
+gameLoop renderer textures audioData windowDimensions ticksSinceLastUpdate scene = do
     let loop = gameLoop renderer textures audioData windowDimensions
 
     events <- pollEvents
 
-    render textures renderer windowDimensions gameState
+    renderScene textures renderer windowDimensions scene
+    present renderer
 
     now <- ticks
     let deltaTime = now - ticksSinceLastUpdate
-        (newGameState, soundEffects) = update events (nat $ fromIntegral deltaTime) gameState
+        (newScene, soundEffects) = updateScene events (nat $ fromIntegral deltaTime) scene
 
     if not $ shouldQuit events
       -- This use of fromIntegral can crash if deltaTime is negative
-      then playAll soundEffects >> loop now newGameState 
+      then playAll soundEffects >> loop now newScene
       else pure ()
   where
     playAll :: [Sound] -> IO ()
@@ -508,9 +548,32 @@ currentEnemy = encounterEnemy . currentEncounter
 shouldDisplayHint :: GameState -> Bool
 shouldDisplayHint gameState = hitsTakenBeforeShowingHint (currentEncounter gameState) <= hitsTakenDueToCurrentEnemy gameState
 
-render :: TextureData -> Renderer -> V2 CInt -> GameState -> IO ()
-render textures renderer windowDimensions gameState = do
-    
+renderScene :: TextureData -> Renderer -> V2 CInt -> Scene -> IO ()
+renderScene textures renderer windowDimensions scene = case scene of
+    InGame _ gameState -> render textures renderer windowDimensions gameState
+    TitleScreen -> do
+        renderBackground textures renderer
+
+        -- Test square
+        rendererDrawColor renderer $= V4 0 200 20 255 
+        fillRect renderer $ Just $ Rectangle (P $ V2 100 100) (V2 200 20)
+
+    LevelWonScreen _ -> do
+        renderBackground textures renderer
+
+        -- Test white square
+        rendererDrawColor renderer $= white
+        fillRect renderer $ Just $ Rectangle (P $ V2 100 100) (V2 200 20)
+
+    GameWonScreen -> do
+        renderBackground textures renderer
+
+        -- Test red square
+        rendererDrawColor renderer $= red
+        fillRect renderer $ Just $ Rectangle (P $ V2 100 100) (V2 200 20)
+
+renderBackground :: TextureData -> Renderer -> IO ()
+renderBackground textures renderer = do
     -- Blue sky
     rendererDrawColor renderer $= (V4 0 153 255 255)
     fillRect renderer Nothing
@@ -518,6 +581,17 @@ render textures renderer windowDimensions gameState = do
     -- Grass tiles
     traverse_ (copy renderer (grassTile textures) Nothing) $ map (Just . square grassTileSize . P . flip V2 600) $
         map (* grassTileSize) [0..5]
+
+white :: V4 Word8
+white = V4 255 255 255 255
+
+red :: V4 Word8
+red = V4 255 0 0 255
+
+render :: TextureData -> Renderer -> V2 CInt -> GameState -> IO ()
+render textures renderer windowDimensions gameState = do
+    
+    renderBackground textures renderer
 
     -- Enemy
     let
@@ -561,8 +635,6 @@ render textures renderer windowDimensions gameState = do
             (Just $ moveRectangle (P $ V2 150 0) attackingFighterRect)
 
     -- Health bar:
-    let white = V4 255 255 255 255
-        red = V4 255 0 0 255
 
     -- White background
     rendererDrawColor renderer $= white
@@ -597,8 +669,6 @@ render textures renderer windowDimensions gameState = do
             size = V2 frameWidth frameHeight
             frameRect = Just $ Rectangle (P $ V2 (frameWidth * animationFrame) 0) size
         in copy renderer (hitEffect textures) frameRect (Just $ Rectangle (P $ V2 700 0) (15 * size))
-
-    present renderer
 
 -- In miliseconds
 effectTimeAlive :: FlyingEnemyEffect -> Nat
@@ -681,7 +751,7 @@ main = do
     window <- createWindow "Combo!" defaultWindow
     setWindowMode window FullscreenDesktop
 
-    renderer <- createRenderer window (-1) defaultRenderer
+    renderer <- createRenderer window (-1) defaultRenderer { rendererType = AcceleratedVSyncRenderer }
     initialTicks <- ticks
     textures <- loadGameTextures renderer
     windowDimensions <- get $ windowSize window
@@ -691,7 +761,7 @@ main = do
     Mix.openAudio def 256
 
     audioData <- loadAudioData
-    gameLoop renderer textures audioData windowDimensions initialTicks initialGameState 
+    gameLoop renderer textures audioData windowDimensions initialTicks initialScene
 
     freeAudioData audioData
     Mix.closeAudio
@@ -709,12 +779,13 @@ TODO
         (Estimating 10 to 12 encounters each)
     Goal: 10 enemies
 
-    Title screen
-    You beat the level! screen
+    Draw:
+      Title screen
+      You beat the level! screen
 
 Optional:
     Keys per second bonus - Fast = Good (give health back)
-    
+    Game mode with random enemies
 -}
 
 {-
