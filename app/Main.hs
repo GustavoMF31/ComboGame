@@ -5,7 +5,7 @@
 
 import Control.Monad (when, (<=<), guard, join)
 import Data.Foldable (traverse_)
-import Data.Maybe (mapMaybe, listToMaybe, fromMaybe, isNothing, isJust)
+import Data.Maybe (mapMaybe, listToMaybe, isNothing, isJust)
 import Data.Bool (bool)
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
@@ -183,6 +183,7 @@ data GameState = MkGameState
     , hitsTakenDueToCurrentEnemy :: Nat
     , hitEffectInProgress :: Maybe Nat
     , enemyWalkInTimer :: Maybe Nat -- Nothing means the enemy is not walking in
+    , levelRestartEffect :: Maybe Nat -- Counts down to the effect's disappearance
     } deriving (Show)
 
 enemyTexture :: Enemy -> TextureData -> Texture
@@ -303,6 +304,7 @@ loadLevel level = MkGameState
     , hitsTakenDueToCurrentEnemy = nat 0
     , hitEffectInProgress = Nothing
     , enemyWalkInTimer = Just enemyWalkInDuration
+    , levelRestartEffect = Nothing
     }
   where
     initialEnemy = encounterEnemy initialEncounter
@@ -383,12 +385,12 @@ update :: [Event] -> Nat -> LevelZipper -> GameState -> (Scene, [Sound])
 update events delta levelZipper gameState = maybe ((, []) $ maybe GameWonScreen LevelWonScreen $ nextLevel levelZipper) (\(keysOfTheComboLeft, currentKeySucceeded, newEnemies) ->
     let killedEnemy :: Bool
         killedEnemy = isJust newEnemies
-    in (InGame levelZipper MkGameState
+    in (InGame levelZipper $ flip (maybe ((loadLevel $ currentLevel levelZipper) { levelRestartEffect = Just levelRestartEffectDuration })) newPlayerHealth (\playerAliveHealth -> MkGameState
     { comboKeysLeft = if comboTimeOut then comboToDefeat (currentEnemy gameState) else keysOfTheComboLeft
     , nextEncounters = maybe (nextEncounters gameState) snd newEnemies
     , timeSinceStart = natAdd delta $ timeSinceStart gameState
     , currentEncounter = maybe (currentEncounter gameState) fst newEnemies
-    , playerHealth = fromMaybe (error "player dead") $ natMinus (playerHealth gameState) $ bool (nat 0) (nat 1) enemyAttacked
+    , playerHealth = playerAliveHealth
     -- Reset the enemy attack timer whenever the enemy attacks or dies
     , enemyAttackTimer = case updatedEnemyTimer of
                              Nothing -> timeBetweenEnemyAttacks
@@ -421,7 +423,8 @@ update events delta levelZipper gameState = maybe ((, []) $ maybe GameWonScreen 
                                     else natAdd (hitsTakenDueToCurrentEnemy gameState) (nat $ if enemyAttacked then 1 else 0)
     , hitEffectInProgress = if currentKeySucceeded then Just hitEffectDuration else updateTimer $ hitEffectInProgress gameState
     , enemyWalkInTimer = if isJust newEnemies then Just enemyWalkInDuration else updateTimer $ enemyWalkInTimer gameState
-    },
+    , levelRestartEffect = updateTimer $ levelRestartEffect gameState
+    }),
         maybe [] (\key -> if currentKeySucceeded then [attackSoundForKey key] else []) keyPressed
      ++ maybe [hit0] (const []) updatedEnemyTimer
     )) keyPressResult
@@ -429,6 +432,9 @@ update events delta levelZipper gameState = maybe ((, []) $ maybe GameWonScreen 
   where
     keysPressed :: [ComboKey]
     keysPressed = getComboInputs events
+
+    newPlayerHealth :: Maybe Nat
+    newPlayerHealth = natMinus (playerHealth gameState) $ bool (nat 0) (nat 1) enemyAttacked
 
     keyPressed :: Maybe ComboKey
     keyPressed = listToMaybe keysPressed
@@ -588,6 +594,9 @@ white = V4 255 255 255 255
 red :: V4 Word8
 red = V4 255 0 0 255
 
+levelRestartEffectDuration :: Nat
+levelRestartEffectDuration = nat 1000
+
 render :: TextureData -> Renderer -> V2 CInt -> GameState -> IO ()
 render textures renderer windowDimensions gameState = do
     
@@ -669,6 +678,13 @@ render textures renderer windowDimensions gameState = do
             size = V2 frameWidth frameHeight
             frameRect = Just $ Rectangle (P $ V2 (frameWidth * animationFrame) 0) size
         in copy renderer (hitEffect textures) frameRect (Just $ Rectangle (P $ V2 700 0) (15 * size))
+
+    -- Level restart graphic
+    whenJust (levelRestartEffect gameState) $ \timeLeft ->
+        let ratioCompleted = 1 - (natAsDouble timeLeft / natAsDouble levelRestartEffectDuration)
+        in do
+          rendererDrawColor renderer $= white
+          fillRect renderer $ Just $ Rectangle (P $ V2 500 500) (V2 300 300)
 
 -- In miliseconds
 effectTimeAlive :: FlyingEnemyEffect -> Nat
@@ -772,7 +788,6 @@ main = do
 
 {-
 TODO
-    Level restart
 
     Attack pose: 1 missing
         - Dragon ball like hit with two hands
@@ -784,6 +799,7 @@ TODO
     Draw:
       Title screen
       You beat the level! screen
+      Level restart graphic
 
 Optional:
     Keys per second bonus - Fast = Good (give health back)
