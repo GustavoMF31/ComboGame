@@ -768,6 +768,8 @@ main = do
     setWindowMode window FullscreenDesktop
 
     renderer <- createRenderer window (-1) defaultRenderer { rendererType = AcceleratedVSyncRenderer }
+    rendererLogicalSize renderer $= Just (V2 1366 768)
+
     initialTicks <- ticks
     textures <- loadGameTextures renderer
     windowDimensions <- get $ windowSize window
