@@ -62,6 +62,7 @@ data TextureData = MkTextureData
     , greenRat :: Texture
     , purpleSpider :: Texture
     , redSpider :: Texture
+    , gameTitle :: Texture
     }
 
 data AudioData = MkAudioData
@@ -560,9 +561,7 @@ renderScene textures renderer windowDimensions scene = case scene of
     TitleScreen -> do
         renderBackground textures renderer
 
-        -- Test square
-        rendererDrawColor renderer $= V4 0 200 20 255 
-        fillRect renderer $ Just $ Rectangle (P $ V2 100 100) (V2 200 20)
+        copy renderer (gameTitle textures) Nothing $ Just $ Rectangle (P $ V2 200 0) (10 * V2 96 64)
 
     LevelWonScreen _ -> do
         renderBackground textures renderer
@@ -756,6 +755,7 @@ loadGameTextures renderer = MkTextureData
     <*> loadTexture renderer (png "green-rat")
     <*> loadTexture renderer (png "purple-spider")
     <*> loadTexture renderer (png "red-spider")
+    <*> loadTexture renderer (png "game-title")
   where
     png :: String -> String
     png x = "assets/" ++ x ++ ".png"
@@ -791,17 +791,17 @@ main = do
 {-
 TODO
 
-    Attack pose: 1 missing
-        - Dragon ball like hit with two hands
-
-    Goal: 5 Levels
-        (Estimating 10 to 12 encounters each)
-    Goal: 10 enemies
-
     Draw:
       Title screen
       You beat the level! screen
       Level restart graphic
+
+    Goal: 10 enemies
+    Goal: 5 Levels
+        (Estimating 10 to 12 encounters each)
+
+    Attack pose: 1 missing
+        - Dragon ball like hit with two hands
 
 Optional:
     Keys per second bonus - Fast = Good (give health back)
