@@ -63,6 +63,7 @@ data TextureData = MkTextureData
     , purpleSpider :: Texture
     , redSpider :: Texture
     , gameTitle :: Texture
+    , restartingLevel :: Texture
     }
 
 data AudioData = MkAudioData
@@ -594,7 +595,7 @@ red :: V4 Word8
 red = V4 255 0 0 255
 
 levelRestartEffectDuration :: Nat
-levelRestartEffectDuration = nat 1000
+levelRestartEffectDuration = nat 1600
 
 render :: TextureData -> Renderer -> V2 CInt -> GameState -> IO ()
 render textures renderer windowDimensions gameState = do
@@ -643,17 +644,18 @@ render textures renderer windowDimensions gameState = do
             (Just $ moveRectangle (P $ V2 150 0) attackingFighterRect)
 
     -- Health bar:
+    let healthBarPos = P $ V2 80 700
 
     -- White background
     rendererDrawColor renderer $= white
-    fillRect renderer $ Just $ Rectangle (P $ V2 100 700) (V2 200 20)
+    fillRect renderer $ Just $ Rectangle healthBarPos (V2 200 20)
 
-    when (shouldDisplayHint gameState) $ drawKeysToPressHint renderer textures gameState windowDimensions
-    -- drawKeysToPressHint renderer textures gameState windowDimensions
+    when (shouldDisplayHint gameState && not (isJust $ levelRestartEffect gameState)) $
+        drawKeysToPressHint renderer textures gameState windowDimensions
 
     -- Red indicator
     rendererDrawColor renderer $= red
-    fillRect renderer $ Just $ Rectangle (P $ V2 100 700) (V2 (round $ 200 * (natAsDouble $ playerHealth gameState) / natAsDouble maxHealth) 20)
+    fillRect renderer $ Just $ Rectangle healthBarPos (V2 (round $ 200 * (natAsDouble $ playerHealth gameState) / natAsDouble maxHealth) 20)
 
     -- Flying enemy effect
 
@@ -683,7 +685,7 @@ render textures renderer windowDimensions gameState = do
         let ratioCompleted = 1 - (natAsDouble timeLeft / natAsDouble levelRestartEffectDuration)
         in do
           rendererDrawColor renderer $= white
-          fillRect renderer $ Just $ Rectangle (P $ V2 500 500) (V2 300 300)
+          copy renderer (restartingLevel textures) Nothing $ Just $ Rectangle (P $ V2 200 150) (10 * V2 96 32)
 
 -- In miliseconds
 effectTimeAlive :: FlyingEnemyEffect -> Nat
@@ -756,6 +758,7 @@ loadGameTextures renderer = MkTextureData
     <*> loadTexture renderer (png "purple-spider")
     <*> loadTexture renderer (png "red-spider")
     <*> loadTexture renderer (png "game-title")
+    <*> loadTexture renderer (png "restarting-level")
   where
     png :: String -> String
     png x = "assets/" ++ x ++ ".png"
@@ -792,9 +795,7 @@ main = do
 TODO
 
     Draw:
-      Title screen
       You beat the level! screen
-      Level restart graphic
 
     Goal: 10 enemies
     Goal: 5 Levels
@@ -807,6 +808,7 @@ Optional:
     Keys per second bonus - Fast = Good (give health back)
     Game mode with random enemies
     Player dead drawing and effect
+    Slide the "Restarting level" in and out with an animation
 -}
 
 {-
