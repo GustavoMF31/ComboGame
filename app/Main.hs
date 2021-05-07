@@ -229,9 +229,9 @@ blueRatCombo = KeyO :| [KeyK, KeyM]
 
 -- TODO: An enemy that requires OJOJ combo
 comboToDefeat :: Enemy -> Combo
--- comboToDefeat Rat = KeyJ :| []
+comboToDefeat Rat = KeyJ :| []
 -- comboToDefeat Rat = KeyO :| concat (replicate 4 [KeyJ, KeyO])
-comboToDefeat Rat = KeyU :| [KeyI, KeyO, KeyJ, KeyK, KeyL, KeyM, KeyComma, KeyPeriod]
+-- comboToDefeat Rat = KeyU :| [KeyI, KeyO, KeyJ, KeyK, KeyL, KeyM, KeyComma, KeyPeriod]
 comboToDefeat BlueRat = KeyO :| [KeyK, KeyM]
 comboToDefeat GreenRat = KeyU :| [KeyK, KeyPeriod]
 comboToDefeat Spider = blueRatCombo <> blueRatCombo <> forward -- KeyPeriod :| [KeyK, KeyU]
@@ -386,7 +386,7 @@ update events delta levelZipper gameState = maybe ((, []) $ maybe GameWonScreen 
     in (InGame levelZipper MkGameState
     { comboKeysLeft = if comboTimeOut then comboToDefeat (currentEnemy gameState) else keysOfTheComboLeft
     , nextEncounters = maybe (nextEncounters gameState) snd newEnemies
-    , timeSinceStart = natAdd (nat 1) $ timeSinceStart gameState
+    , timeSinceStart = natAdd delta $ timeSinceStart gameState
     , currentEncounter = maybe (currentEncounter gameState) fst newEnemies
     , playerHealth = fromMaybe (error "player dead") $ natMinus (playerHealth gameState) $ bool (nat 0) (nat 1) enemyAttacked
     -- Reset the enemy attack timer whenever the enemy attacks or dies
@@ -772,6 +772,8 @@ main = do
 
 {-
 TODO
+    Level restart
+
     Attack pose: 1 missing
         - Dragon ball like hit with two hands
 
@@ -786,6 +788,7 @@ TODO
 Optional:
     Keys per second bonus - Fast = Good (give health back)
     Game mode with random enemies
+    Player dead drawing and effect
 -}
 
 {-
