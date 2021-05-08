@@ -40,7 +40,7 @@ data Enemy
     = Rat | BlueRat | GreenRat | GiantRat
     | Spider | PurpleSpider | RedSpider | GiantSpider
     | Clone | OrangeClone | YellowClone
-    | Skeleton
+    | Skeleton | BronzeSkeleton | GoldenSkeleton
     | GrassTileEnemy
     deriving (Show)
 
@@ -75,6 +75,8 @@ data TextureData = MkTextureData
     , skeleton :: Texture
     , orangeClone :: Texture
     , yellowClone :: Texture
+    , bronzeSkeleton :: Texture
+    , goldenSkeleton :: Texture
     }
 
 data AudioData = MkAudioData
@@ -206,6 +208,8 @@ enemyTexture PurpleSpider = purpleSpider
 enemyTexture RedSpider = redSpider
 enemyTexture GiantSpider = spiderSprite
 enemyTexture Skeleton = skeleton
+enemyTexture BronzeSkeleton = bronzeSkeleton
+enemyTexture GoldenSkeleton = goldenSkeleton
 enemyTexture Clone = evilClone
 enemyTexture OrangeClone = orangeClone
 enemyTexture YellowClone = yellowClone
@@ -220,11 +224,25 @@ enemySize Spider = spiderSize
 enemySize PurpleSpider = spiderSize
 enemySize RedSpider = spiderSize
 enemySize GiantSpider = 2 * spiderSize
-enemySize Skeleton = 10 * V2 32 48
-enemySize Clone = 8 * V2 64 64
-enemySize OrangeClone = 8 * V2 64 64
-enemySize YellowClone = 8 * V2 64 64
+enemySize Skeleton = skeletonSize
+enemySize BronzeSkeleton = skeletonSize
+enemySize GoldenSkeleton = skeletonSize
+enemySize Clone = cloneSize
+enemySize OrangeClone = cloneSize
+enemySize YellowClone = cloneSize
 enemySize GrassTileEnemy = V2 200 200
+
+ratSize :: V2 CInt
+ratSize = 12 * V2 34 12
+
+spiderSize :: V2 CInt
+spiderSize = 12 * V2 25 10
+
+skeletonSize :: V2 CInt
+skeletonSize = 10 * V2 32 48
+
+cloneSize :: V2 CInt
+cloneSize = 8 * V2 64 64
 
 -- Can be used to adjust the position to play well with the sprite and size defined above
 enemyY :: Enemy -> CInt
@@ -237,6 +255,8 @@ enemyY PurpleSpider = 530
 enemyY RedSpider = 530
 enemyY GiantSpider = 450
 enemyY Skeleton = 250
+enemyY BronzeSkeleton = 250
+enemyY GoldenSkeleton = 250
 enemyY Clone = 200
 enemyY OrangeClone = 200
 enemyY YellowClone = 200
@@ -247,12 +267,6 @@ enemyPositionXOffset GiantRat = -300
 enemyPositionXOffset GiantSpider = -250
 enemyPositionXOffset _ = 0
 
-ratSize :: V2 CInt
-ratSize = 12 * V2 34 12
-
-spiderSize :: V2 CInt
-spiderSize = 12 * V2 25 10
-
 ratY :: CInt
 ratY = 530
 
@@ -261,19 +275,19 @@ comboToDefeat Rat = KeyJ :| []
 comboToDefeat BlueRat = KeyL :| [KeyK, KeyJ]
 comboToDefeat GreenRat = KeyJ :| [KeyK, KeyL]
 comboToDefeat GiantRat = KeyJ :| [KeyK, KeyL]
--- Giant rat maybe? Kind of a boss
 
 comboToDefeat Spider = KeyO :| [KeyK, KeyM]
 comboToDefeat PurpleSpider = KeyK :| [KeyM, KeyU]
 comboToDefeat RedSpider = KeyI :| [KeyM, KeyM, KeyJ]
 comboToDefeat GiantSpider = KeyI :| [KeyM, KeyM, KeyJ]
--- Giant spider??
 
 comboToDefeat Clone = KeyK :| [KeyK, KeyJ]
 comboToDefeat OrangeClone = KeyK :| [KeyK, KeyJ]
 comboToDefeat YellowClone = KeyK :| [KeyK, KeyJ]
 
 comboToDefeat Skeleton = KeyO :| [KeyJ, KeyO, KeyJ]
+comboToDefeat BronzeSkeleton = KeyO :| [KeyJ, KeyO, KeyJ]
+comboToDefeat GoldenSkeleton = KeyO :| [KeyJ, KeyO, KeyJ]
 
 comboToDefeat GrassTileEnemy = KeyK :| [KeyL, KeyJ]
 
@@ -318,6 +332,8 @@ testLevel :: Level
 testLevel = mkLevel $
       (Clone, 0) :|
     [ (RedSpider, 0)
+    , (GoldenSkeleton, 0)
+    , (BronzeSkeleton, 0)
     , (GiantSpider, 0)
     , (GiantRat, 0)
     , (Rat, 0)
@@ -801,6 +817,8 @@ loadGameTextures renderer = MkTextureData
     <*> loadTexture renderer (png "skeleton")
     <*> loadTexture renderer (png "orange-clone")
     <*> loadTexture renderer (png "yellow-clone")
+    <*> loadTexture renderer (png "bronze-skeleton")
+    <*> loadTexture renderer (png "golden-skeleton")
   where
     png :: String -> String
     png x = "assets/" ++ x ++ ".png"
@@ -836,24 +854,13 @@ main = do
 {-
 TODO
 
-    Goal: 10 enemies
     Goal: 5 Levels
         (Estimating 10 to 12 encounters each)
 
-    Attack pose: 1 missing
-        - Dragon ball like hit with two hands
-
 Optional:
-    Get rid of the special keys, since they cause confusion
+    Different looking floor tiles for each level
     Keys per second bonus - Fast = Good (give health back)
     Game mode with random enemies
     Player dead drawing and effect
     Slide the "Restarting level" in and out with an animation
--}
-
-{-
-Enemies can vary in:
-    - Size
-    - Color
-    - "Species"
 -}
