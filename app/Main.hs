@@ -36,7 +36,7 @@ shouldQuit :: [Event] -> Bool
 shouldQuit = any $ (QuitEvent ==) . eventPayload
 
 type Combo = NonEmpty ComboKey
-data Enemy = Rat | BlueRat | GreenRat | Spider | PurpleSpider | RedSpider | Clone | GrassTileEnemy
+data Enemy = Rat | BlueRat | GreenRat | Spider | PurpleSpider | RedSpider | Clone | Skeleton | GrassTileEnemy
     deriving (Show)
 data EnemyEncounter = MkEnemyEncounter { encounterEnemy :: Enemy, hitsTakenBeforeShowingHint :: Nat }
     deriving (Show)
@@ -66,6 +66,7 @@ data TextureData = MkTextureData
     , restartingLevel :: Texture
     , levelCompleted :: Texture
     , gameWon :: Texture
+    , skeleton :: Texture
     }
 
 data AudioData = MkAudioData
@@ -197,8 +198,9 @@ enemyTexture GreenRat = greenRat
 enemyTexture Spider = spiderSprite
 enemyTexture PurpleSpider = purpleSpider
 enemyTexture RedSpider = redSpider
-enemyTexture GrassTileEnemy = grassTile
+enemyTexture Skeleton = skeleton
 enemyTexture Clone = evilClone
+enemyTexture GrassTileEnemy = grassTile
 
 enemySize :: Enemy -> V2 CInt
 enemySize Rat = ratSize
@@ -207,8 +209,9 @@ enemySize GreenRat = ratSize
 enemySize Spider = 12 * V2 25 10
 enemySize PurpleSpider = 12 * V2 25 10
 enemySize RedSpider = 12 * V2 25 10
-enemySize GrassTileEnemy = V2 200 200
+enemySize Skeleton = 10 * V2 32 48
 enemySize Clone = 8 * V2 64 64
+enemySize GrassTileEnemy = V2 200 200
 
 -- Can be used to adjust the position to play well with the sprite and size defined above
 enemyY :: Enemy -> CInt
@@ -218,8 +221,9 @@ enemyY GreenRat = ratY
 enemyY Spider = 530
 enemyY PurpleSpider = 530
 enemyY RedSpider = 530
-enemyY GrassTileEnemy = 500
+enemyY Skeleton = 250
 enemyY Clone = 200
+enemyY GrassTileEnemy = 500
 
 ratSize :: V2 CInt
 ratSize = 12 * V2 34 12
@@ -242,8 +246,9 @@ comboToDefeat GreenRat = KeyU :| [KeyK, KeyPeriod]
 comboToDefeat Spider = blueRatCombo <> blueRatCombo <> forward -- KeyPeriod :| [KeyK, KeyU]
 comboToDefeat PurpleSpider = KeyK :| [KeyM, KeyU]
 comboToDefeat RedSpider = KeyL :| [KeyL, KeyJ]
-comboToDefeat GrassTileEnemy = KeyK :| [KeyL, KeyJ]
+comboToDefeat Skeleton = KeyO :| [KeyJ, KeyO, KeyJ]
 comboToDefeat Clone = KeyK :| [KeyK, KeyJ]
+comboToDefeat GrassTileEnemy = KeyK :| [KeyL, KeyJ]
 
 maxHealth :: Nat
 maxHealth = nat 10
@@ -286,6 +291,7 @@ testLevel :: Level
 testLevel = mkLevel $
       (Clone, 0) :|
     [ (RedSpider, 0)
+    , (Skeleton, 0)
     , (GreenRat, 0)
     , (PurpleSpider, 0)
     , (Rat, 0)
@@ -759,6 +765,7 @@ loadGameTextures renderer = MkTextureData
     <*> loadTexture renderer (png "restarting-level")
     <*> loadTexture renderer (png "level-completed")
     <*> loadTexture renderer (png "you-won")
+    <*> loadTexture renderer (png "skeleton")
   where
     png :: String -> String
     png x = "assets/" ++ x ++ ".png"
