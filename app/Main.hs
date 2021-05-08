@@ -64,6 +64,8 @@ data TextureData = MkTextureData
     , redSpider :: Texture
     , gameTitle :: Texture
     , restartingLevel :: Texture
+    , levelCompleted :: Texture
+    , gameWon :: Texture
     }
 
 data AudioData = MkAudioData
@@ -567,16 +569,12 @@ renderScene textures renderer windowDimensions scene = case scene of
     LevelWonScreen _ -> do
         renderBackground textures renderer
 
-        -- Test white square
-        rendererDrawColor renderer $= white
-        fillRect renderer $ Just $ Rectangle (P $ V2 100 100) (V2 200 20)
+        copy renderer (levelCompleted textures) Nothing $ Just $ Rectangle (P $ V2 200 0) (10 * V2 96 64)
 
     GameWonScreen -> do
         renderBackground textures renderer
 
-        -- Test red square
-        rendererDrawColor renderer $= red
-        fillRect renderer $ Just $ Rectangle (P $ V2 100 100) (V2 200 20)
+        copy renderer (gameWon textures) Nothing $ Just $ Rectangle (P $ V2 200 50) (10 * V2 96 64)
 
 renderBackground :: TextureData -> Renderer -> IO ()
 renderBackground textures renderer = do
@@ -759,6 +757,8 @@ loadGameTextures renderer = MkTextureData
     <*> loadTexture renderer (png "red-spider")
     <*> loadTexture renderer (png "game-title")
     <*> loadTexture renderer (png "restarting-level")
+    <*> loadTexture renderer (png "level-completed")
+    <*> loadTexture renderer (png "you-won")
   where
     png :: String -> String
     png x = "assets/" ++ x ++ ".png"
@@ -794,9 +794,6 @@ main = do
 {-
 TODO
 
-    Draw:
-      You beat the level! screen
-
     Goal: 10 enemies
     Goal: 5 Levels
         (Estimating 10 to 12 encounters each)
@@ -805,6 +802,7 @@ TODO
         - Dragon ball like hit with two hands
 
 Optional:
+    Get rid of the special keys, since they cause confusion
     Keys per second bonus - Fast = Good (give health back)
     Game mode with random enemies
     Player dead drawing and effect
