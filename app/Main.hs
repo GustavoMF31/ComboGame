@@ -36,8 +36,14 @@ shouldQuit :: [Event] -> Bool
 shouldQuit = any $ (QuitEvent ==) . eventPayload
 
 type Combo = NonEmpty ComboKey
-data Enemy = Rat | BlueRat | GreenRat | Spider | PurpleSpider | RedSpider | Clone | Skeleton | GrassTileEnemy
+data Enemy
+    = Rat | BlueRat | GreenRat | GiantRat
+    | Spider | PurpleSpider | RedSpider | GiantSpider
+    | Clone | OrangeClone | YellowClone
+    | Skeleton
+    | GrassTileEnemy
     deriving (Show)
+
 data EnemyEncounter = MkEnemyEncounter { encounterEnemy :: Enemy, hitsTakenBeforeShowingHint :: Nat }
     deriving (Show)
 
@@ -55,7 +61,7 @@ data TextureData = MkTextureData
     , hitEffect :: Texture
     , headbutt :: Texture
     , leftPunch :: Texture
-    , crouchPunch :: Texture
+    -- , crouchPunch :: Texture
     , kneeStrike :: Texture
     , jumpKick :: Texture
     , evilClone :: Texture
@@ -67,6 +73,8 @@ data TextureData = MkTextureData
     , levelCompleted :: Texture
     , gameWon :: Texture
     , skeleton :: Texture
+    , orangeClone :: Texture
+    , yellowClone :: Texture
     }
 
 data AudioData = MkAudioData
@@ -77,8 +85,8 @@ data AudioData = MkAudioData
     , hit4 :: Mix.Chunk
     , hit5 :: Mix.Chunk
     , hit6 :: Mix.Chunk
-    , hit7 :: Mix.Chunk
-    , hit8 :: Mix.Chunk
+    -- , hit7 :: Mix.Chunk
+    -- , hit8 :: Mix.Chunk
     }
 
 type Sound = AudioData -> Mix.Chunk
@@ -92,14 +100,14 @@ loadAudioData = MkAudioData
     <*> Mix.load (mp3 "hit4")
     <*> Mix.load (mp3 "hit5")
     <*> Mix.load (mp3 "hit6")
-    <*> Mix.load (mp3 "hit7")
-    <*> Mix.load (mp3 "hit8")
+    -- <*> Mix.load (mp3 "hit7")
+    -- <*> Mix.load (mp3 "hit8")
   where
     mp3 :: String -> String
     mp3 x = "assets/" ++ x ++ ".mp3"
  
 freeAudioData :: AudioData -> IO ()
-freeAudioData (MkAudioData a b c d e f g h i) = do
+freeAudioData (MkAudioData a b c d e f g) = do
     Mix.free a
     Mix.free b
     Mix.free c
@@ -107,8 +115,6 @@ freeAudioData (MkAudioData a b c d e f g h i) = do
     Mix.free e
     Mix.free f
     Mix.free g
-    Mix.free h
-    Mix.free i
 
 data ComboKey
     = KeyJ
@@ -118,8 +124,8 @@ data ComboKey
     | KeyI
     | KeyO
     | KeyM
-    | KeyComma
-    | KeyPeriod
+    -- | KeyComma
+    -- | KeyPeriod
   deriving (Show, Eq)
 
 comboKeyAttackPose :: ComboKey -> TextureData -> Texture
@@ -130,9 +136,8 @@ comboKeyAttackPose KeyJ = attackPose -- Right hand punch
 comboKeyAttackPose KeyO = leftPunch -- Left hand punch
 comboKeyAttackPose KeyI = kneeStrike
 comboKeyAttackPose KeyU = jumpKick
-comboKeyAttackPose KeyComma = crouchPunch
+-- comboKeyAttackPose KeyComma = crouchPunch
 -- comboKeyAttackPose KeyPeriod = leftPunch
-comboKeyAttackPose _ = attackPose
 
 attackSoundForKey :: ComboKey -> Sound
 attackSoundForKey KeyJ = hit0
@@ -142,8 +147,8 @@ attackSoundForKey KeyO = hit3
 attackSoundForKey KeyM = hit4
 attackSoundForKey KeyU = hit5
 attackSoundForKey KeyI = hit6
-attackSoundForKey KeyComma = hit7
-attackSoundForKey KeyPeriod = hit8
+-- attackSoundForKey KeyComma = hit7
+-- attackSoundForKey KeyPeriod = hit8
 
 data FlyingEnemyEffect = MkFlyingEnemyEffect
     { effectEnemy :: Enemy
@@ -195,22 +200,30 @@ enemyTexture :: Enemy -> TextureData -> Texture
 enemyTexture Rat = ratSprite
 enemyTexture BlueRat = blueRatSprite
 enemyTexture GreenRat = greenRat
+enemyTexture GiantRat = ratSprite
 enemyTexture Spider = spiderSprite
 enemyTexture PurpleSpider = purpleSpider
 enemyTexture RedSpider = redSpider
+enemyTexture GiantSpider = spiderSprite
 enemyTexture Skeleton = skeleton
 enemyTexture Clone = evilClone
+enemyTexture OrangeClone = orangeClone
+enemyTexture YellowClone = yellowClone
 enemyTexture GrassTileEnemy = grassTile
 
 enemySize :: Enemy -> V2 CInt
 enemySize Rat = ratSize
 enemySize BlueRat = ratSize
 enemySize GreenRat = ratSize
-enemySize Spider = 12 * V2 25 10
-enemySize PurpleSpider = 12 * V2 25 10
-enemySize RedSpider = 12 * V2 25 10
+enemySize GiantRat = 2 * ratSize
+enemySize Spider = spiderSize
+enemySize PurpleSpider = spiderSize
+enemySize RedSpider = spiderSize
+enemySize GiantSpider = 2 * spiderSize
 enemySize Skeleton = 10 * V2 32 48
 enemySize Clone = 8 * V2 64 64
+enemySize OrangeClone = 8 * V2 64 64
+enemySize YellowClone = 8 * V2 64 64
 enemySize GrassTileEnemy = V2 200 200
 
 -- Can be used to adjust the position to play well with the sprite and size defined above
@@ -218,36 +231,50 @@ enemyY :: Enemy -> CInt
 enemyY Rat = ratY
 enemyY BlueRat = ratY
 enemyY GreenRat = ratY
+enemyY GiantRat = 400
 enemyY Spider = 530
 enemyY PurpleSpider = 530
 enemyY RedSpider = 530
+enemyY GiantSpider = 450
 enemyY Skeleton = 250
 enemyY Clone = 200
+enemyY OrangeClone = 200
+enemyY YellowClone = 200
 enemyY GrassTileEnemy = 500
+
+enemyPositionXOffset :: Enemy -> CInt
+enemyPositionXOffset GiantRat = -300
+enemyPositionXOffset GiantSpider = -250
+enemyPositionXOffset _ = 0
 
 ratSize :: V2 CInt
 ratSize = 12 * V2 34 12
 
+spiderSize :: V2 CInt
+spiderSize = 12 * V2 25 10
+
 ratY :: CInt
 ratY = 530
 
-forward, blueRatCombo :: Combo
-
-forward = KeyL :| [KeyK, KeyJ]
-blueRatCombo = KeyO :| [KeyK, KeyM]
-
--- TODO: An enemy that requires OJOJ combo
 comboToDefeat :: Enemy -> Combo
 comboToDefeat Rat = KeyJ :| []
--- comboToDefeat Rat = KeyO :| concat (replicate 4 [KeyJ, KeyO])
--- comboToDefeat Rat = KeyU :| [KeyI, KeyO, KeyJ, KeyK, KeyL, KeyM, KeyComma, KeyPeriod]
-comboToDefeat BlueRat = KeyO :| [KeyK, KeyM]
-comboToDefeat GreenRat = KeyU :| [KeyK, KeyPeriod]
-comboToDefeat Spider = blueRatCombo <> blueRatCombo <> forward -- KeyPeriod :| [KeyK, KeyU]
+comboToDefeat BlueRat = KeyL :| [KeyK, KeyJ]
+comboToDefeat GreenRat = KeyJ :| [KeyK, KeyL]
+comboToDefeat GiantRat = KeyJ :| [KeyK, KeyL]
+-- Giant rat maybe? Kind of a boss
+
+comboToDefeat Spider = KeyO :| [KeyK, KeyM]
 comboToDefeat PurpleSpider = KeyK :| [KeyM, KeyU]
-comboToDefeat RedSpider = KeyL :| [KeyL, KeyJ]
-comboToDefeat Skeleton = KeyO :| [KeyJ, KeyO, KeyJ]
+comboToDefeat RedSpider = KeyI :| [KeyM, KeyM, KeyJ]
+comboToDefeat GiantSpider = KeyI :| [KeyM, KeyM, KeyJ]
+-- Giant spider??
+
 comboToDefeat Clone = KeyK :| [KeyK, KeyJ]
+comboToDefeat OrangeClone = KeyK :| [KeyK, KeyJ]
+comboToDefeat YellowClone = KeyK :| [KeyK, KeyJ]
+
+comboToDefeat Skeleton = KeyO :| [KeyJ, KeyO, KeyJ]
+
 comboToDefeat GrassTileEnemy = KeyK :| [KeyL, KeyJ]
 
 maxHealth :: Nat
@@ -291,7 +318,13 @@ testLevel :: Level
 testLevel = mkLevel $
       (Clone, 0) :|
     [ (RedSpider, 0)
+    , (GiantSpider, 0)
+    , (GiantRat, 0)
+    , (Rat, 0)
+    , (GiantRat, 0)
     , (Skeleton, 0)
+    , (YellowClone, 0)
+    , (OrangeClone, 0)
     , (GreenRat, 0)
     , (PurpleSpider, 0)
     , (Rat, 0)
@@ -337,8 +370,8 @@ asComboKey ScancodeU = Just KeyU
 asComboKey ScancodeI = Just KeyI
 asComboKey ScancodeO = Just KeyO
 asComboKey ScancodeM = Just KeyM
-asComboKey ScancodeComma = Just KeyComma
-asComboKey ScancodePeriod = Just KeyPeriod
+-- asComboKey ScancodeComma = Just KeyComma
+-- asComboKey ScancodePeriod = Just KeyPeriod
 asComboKey _ = Nothing
 
 comboKeyAsScancode :: ComboKey -> Scancode
@@ -349,8 +382,8 @@ comboKeyAsScancode KeyU = ScancodeU
 comboKeyAsScancode KeyI = ScancodeI
 comboKeyAsScancode KeyO = ScancodeO
 comboKeyAsScancode KeyM = ScancodeM
-comboKeyAsScancode KeyComma = ScancodeComma
-comboKeyAsScancode KeyPeriod = ScancodePeriod
+-- comboKeyAsScancode KeyComma = ScancodeComma
+-- comboKeyAsScancode KeyPeriod = ScancodePeriod
 
 isEnterPressed :: [Event] -> Bool
 isEnterPressed = not . null . (mapMaybe $ ensure (== KeycodeReturn) <=< fmap getKeycode . ensure isPressed <=< getKeyboardEvent . eventPayload)
@@ -547,8 +580,8 @@ getKeyIndex KeyJ = 1
 getKeyIndex KeyK = 0
 getKeyIndex KeyL = 2
 getKeyIndex KeyM = 6
-getKeyIndex KeyComma = 7
-getKeyIndex KeyPeriod = 8
+-- getKeyIndex KeyComma = 7
+-- getKeyIndex KeyPeriod = 8
 
 getKeyRect :: Bool -> ComboKey -> Rectangle CInt
 getKeyRect pressed = (square 16 . P . flip V2 y . (*16)) . getKeyIndex
@@ -628,7 +661,7 @@ render textures renderer windowDimensions gameState = do
 
     copy renderer (enemyTexture (currentEnemy gameState) textures) Nothing $ Just $
         -- Rectangle (P $ V2 (1000 + round (enemyXOffsetRatio * 900)) (enemyY $ currentEnemy gameState)) (enemySize $ currentEnemy gameState)
-        Rectangle (P $ V2 (round $ 1000 + enemyXOffset) (enemyY $ currentEnemy gameState)) (enemySize $ currentEnemy gameState)
+        Rectangle (P $ V2 (round $ 1000 + fromIntegral (enemyPositionXOffset (currentEnemy gameState)) + enemyXOffset) (enemyY $ currentEnemy gameState)) (enemySize $ currentEnemy gameState)
 
     -- Fighter
     let fighterTopLeft = P $ V2 (-150) 100
@@ -685,9 +718,9 @@ render textures renderer windowDimensions gameState = do
         in copy renderer (hitEffect textures) frameRect (Just $ Rectangle (P $ V2 700 0) (15 * size))
 
     -- Level restart graphic
-    whenJust (levelRestartEffect gameState) $ \timeLeft ->
-        let ratioCompleted = 1 - (natAsDouble timeLeft / natAsDouble levelRestartEffectDuration)
-        in do
+    whenJust (levelRestartEffect gameState) $ \_ -> do
+        -- let ratioCompleted = 1 - (natAsDouble timeLeft / natAsDouble levelRestartEffectDuration)
+        -- in do
           rendererDrawColor renderer $= white
           copy renderer (restartingLevel textures) Nothing $ Just $ Rectangle (P $ V2 200 150) (10 * V2 96 32)
 
@@ -754,7 +787,7 @@ loadGameTextures renderer = MkTextureData
     <*> loadTexture renderer (png "hit-effect")
     <*> loadTexture renderer (png "headbutt")
     <*> loadTexture renderer (png "left-punch")
-    <*> loadTexture renderer (png "crouch-punch")
+    -- <*> loadTexture renderer (png "crouch-punch")
     <*> loadTexture renderer (png "knee-strike")
     <*> loadTexture renderer (png "jump-kick")
     <*> loadTexture renderer (png "evil-clone")
@@ -766,6 +799,8 @@ loadGameTextures renderer = MkTextureData
     <*> loadTexture renderer (png "level-completed")
     <*> loadTexture renderer (png "you-won")
     <*> loadTexture renderer (png "skeleton")
+    <*> loadTexture renderer (png "orange-clone")
+    <*> loadTexture renderer (png "yellow-clone")
   where
     png :: String -> String
     png x = "assets/" ++ x ++ ".png"
