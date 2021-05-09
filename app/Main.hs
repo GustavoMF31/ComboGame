@@ -41,7 +41,6 @@ data Enemy
     | Spider | PurpleSpider | RedSpider | GiantSpider
     | Clone | OrangeClone | YellowClone
     | Skeleton | BronzeSkeleton | GoldenSkeleton
-    | GrassTileEnemy
     deriving (Show)
 
 data EnemyEncounter = MkEnemyEncounter { encounterEnemy :: Enemy, hitsTakenBeforeShowingHint :: Nat }
@@ -213,7 +212,6 @@ enemyTexture GoldenSkeleton = goldenSkeleton
 enemyTexture Clone = evilClone
 enemyTexture OrangeClone = orangeClone
 enemyTexture YellowClone = yellowClone
-enemyTexture GrassTileEnemy = grassTile
 
 enemySize :: Enemy -> V2 CInt
 enemySize Rat = ratSize
@@ -230,7 +228,6 @@ enemySize GoldenSkeleton = skeletonSize
 enemySize Clone = cloneSize
 enemySize OrangeClone = cloneSize
 enemySize YellowClone = cloneSize
-enemySize GrassTileEnemy = V2 200 200
 
 ratSize :: V2 CInt
 ratSize = 12 * V2 34 12
@@ -260,7 +257,6 @@ enemyY GoldenSkeleton = 250
 enemyY Clone = 200
 enemyY OrangeClone = 200
 enemyY YellowClone = 200
-enemyY GrassTileEnemy = 500
 
 enemyPositionXOffset :: Enemy -> CInt
 enemyPositionXOffset GiantRat = -300
@@ -271,25 +267,229 @@ ratY :: CInt
 ratY = 530
 
 comboToDefeat :: Enemy -> Combo
+-- Rats are all about the home row
 comboToDefeat Rat = KeyJ :| []
 comboToDefeat BlueRat = KeyL :| [KeyK, KeyJ]
 comboToDefeat GreenRat = KeyJ :| [KeyK, KeyL]
-comboToDefeat GiantRat = KeyJ :| [KeyK, KeyL]
+-- While giants have doubled keys
+comboToDefeat GiantRat = KeyL :| [KeyL, KeyK, KeyJ, KeyJ]
 
+-- Spiders also use the top row and M
 comboToDefeat Spider = KeyO :| [KeyK, KeyM]
-comboToDefeat PurpleSpider = KeyK :| [KeyM, KeyU]
-comboToDefeat RedSpider = KeyI :| [KeyM, KeyM, KeyJ]
-comboToDefeat GiantSpider = KeyI :| [KeyM, KeyM, KeyJ]
+comboToDefeat PurpleSpider = KeyI :| [KeyM, KeyU]
+-- After the PurpleSpider, the player knows all of the game keys.
+-- RedSpider is the first enemy with a true 4 key combo
+-- (GiantRat has 5, but it's got 2 repeated keys, so it's morally 3)
+comboToDefeat RedSpider = KeyO :| [KeyL, KeyI, KeyK]
+-- GiantSpider is technically 8 keys, but it's morally 5
+comboToDefeat GiantSpider = KeyO :| [KeyO, KeyK, KeyM, KeyM, KeyJ, KeyU, KeyU]
 
-comboToDefeat Clone = KeyK :| [KeyK, KeyJ]
-comboToDefeat OrangeClone = KeyK :| [KeyK, KeyJ]
-comboToDefeat YellowClone = KeyK :| [KeyK, KeyJ]
+-- The first Clone is easy
+comboToDefeat Clone = KeyO :| [KeyJ, KeyO, KeyJ]
+-- The OrangeClone has a quite interesting sequence (the keys jump around quite a bit)
+comboToDefeat OrangeClone = KeyO :| [KeyM, KeyI, KeyJ, KeyU]
+-- YellowClone has 7 keys, but it's not that hard since it's palindromic
+comboToDefeat YellowClone = KeyI :| [KeyK, KeyM, KeyJ, KeyM, KeyK, KeyI]
 
-comboToDefeat Skeleton = KeyO :| [KeyJ, KeyO, KeyJ]
-comboToDefeat BronzeSkeleton = KeyO :| [KeyJ, KeyO, KeyJ]
-comboToDefeat GoldenSkeleton = KeyO :| [KeyJ, KeyO, KeyJ]
+comboToDefeat Skeleton       = KeyL :| [KeyK, KeyM, KeyJ, KeyU, KeyI, KeyO]
+comboToDefeat BronzeSkeleton = KeyK :| [KeyL, KeyO, KeyI, KeyU, KeyJ, KeyM]
+comboToDefeat GoldenSkeleton = KeyO :| [KeyK, KeyM, KeyO, KeyK, KeyM, KeyL, KeyK, KeyJ]
 
-comboToDefeat GrassTileEnemy = KeyK :| [KeyL, KeyJ]
+firstLevel :: NonEmpty EnemyEncounter
+firstLevel = mkLevel $
+      (Rat, 0) :| -- First encounter ever! Press J!
+    [ (Rat, 1) -- Can you do it without a hint?
+    , (Rat, 3) -- Are you sure?
+    , (BlueRat, 0) -- New enemy! Can you press multiple keys?
+    , (BlueRat, 2) -- Can you do it without looking?
+    , (Rat, 3) -- Surprise! Do you remember how to kill the rat?
+    , (BlueRat, 3) -- And what about the blue one?
+
+    -- At this point, a player that's just following hints will have to restart
+
+    -- A bit of peace, just do what you know
+    -- (The player is supposed to start trying to go fast)
+    , (Rat, 3)
+    , (Rat, 4)
+    , (BlueRat, 3)
+    , (BlueRat, 4)
+
+    , (GreenRat, 0) -- New enemy, the green rat!
+    , (GreenRat, 1) -- Practice a bit
+    , (GreenRat, 2) -- Practice some more
+
+    -- Let's make them forget about the green rat
+    , (Rat, 3)
+    , (BlueRat, 3)
+    , (Rat, 3)
+    , (BlueRat, 3)
+
+    -- And then a surprise quiz!
+    , (GreenRat, 3)
+    , (GreenRat, 3)
+
+    , (GiantRat, 0) -- Now the Giant Rat!
+    , (GiantRat, 1) -- Second chance to learn it
+
+    -- Now the final section!
+    , (Rat, 3)
+    , (BlueRat, 3)
+    , (GreenRat, 3)
+    , (GiantRat, 3)
+    , (BlueRat, 3)
+    , (GreenRat, 3)
+    , (GiantRat, 2)
+    , (Rat, 3)
+    , (GiantRat, 3)
+    ]
+
+-- The second level follows a structure similar to the first (show a new enemy, practice, mix it up, test again),
+-- but now we also can bring back stuff from the first level when mixing it up
+secondLevel :: NonEmpty EnemyEncounter
+secondLevel = mkLevel $
+      (Spider, 0) :| -- Let's start with something new
+    [ (Spider, 2) -- Practice a bit
+    , (Rat, 3) -- Here the player sees that the game is allowed to keep using stuff from the previous level
+    , (Spider, 3) -- Practice some more
+    , (BlueRat, 3)
+
+    , (RedSpider, 0) -- New spider!
+    , (GreenRat, 4) -- But don't forget the rats please
+    , (RedSpider, 2) -- Practice the spider
+    , (Spider, 3) -- but don't forget the simple one
+
+    -- Play a bit with the new enemies + old friend
+    , (RedSpider, 3)
+    , (GiantRat, 2) -- (Let's be a bit lenient here in case the player has forgotten how to beat the giant rat)
+    , (Spider, 4)
+    , (GreenRat, 3)
+    , (RedSpider, 3)
+    , (Rat, 5)
+    , (Rat, 5)
+
+    -- New spider!
+    , (PurpleSpider, 0) -- The PurpleSpider is a bit hard, let's give them some time to learn it
+    , (PurpleSpider, 1)
+    , (PurpleSpider, 2)
+
+    -- Spider rush!
+    , (RedSpider, 4)
+    , (PurpleSpider, 2)
+    , (Spider, 4)
+    , (PurpleSpider, 3)
+    , (RedSpider, 4)
+    , (RedSpider, 4)
+
+    -- Now for the level's boss
+    , (GiantSpider, 0)
+    , (GiantSpider, 2)
+    , (Spider, 4)
+    , (GiantSpider, 2)
+    , (RedSpider, 4)
+    , (GiantSpider, 2)
+
+    -- And the final section with everyone
+    -- (Forgetting a rat here is pretty punishing)
+    , (Rat, 4)
+    , (Spider, 3)
+    , (GiantRat, 4)
+    , (PurpleSpider, 2)
+    , (GiantSpider, 3) -- A giant every once in a while
+    , (GreenRat, 4)
+    , (GiantRat, 4)
+    , (BlueRat, 4)
+    , (RedSpider, 3)
+    , (GiantSpider, 3)
+    , (Spider, 3)
+    -- Ending with three giant spiders in a row for some adrenaline
+    , (GiantSpider, 3)
+    , (GiantSpider, 3)
+    , (GiantSpider, 3)
+    ]
+
+-- At this point in the game, even simple stuff is pretty hard due to the sheer amount of enemies already met
+-- (Hopefully not TOO hard)
+thirdLevel :: NonEmpty EnemyEncounter
+thirdLevel = mkLevel $
+      (Clone, 0) :| -- Again, opening with something new
+    [ (BlueRat, 3) -- But suddenly a small rat digression! (They were the focus of the first level, so let's review)
+    , (Rat, 3)
+    , (GreenRat, 3)
+    , (Rat, 5)
+    , (BlueRat, 4)
+
+    , (Clone, 3) -- Do you remember how to kill the clone?
+    , (Clone, 4) -- Ok, now you get to practice a bit
+    , (Spider, 3) -- (With a spider just to mix up the pacing)
+    , (Clone, 3)
+    , (GiantRat, 3) -- Now Giant Rats aren't that special anymore, they can just appear every once in a while
+    , (PurpleSpider, 2)
+
+    , (OrangeClone, 0) -- OrangeClone is a bit tricky, let's not play too many games
+    , (OrangeClone, 1) -- just let the player learn it
+    , (BlueRat, 3)
+    , (OrangeClone, 2)
+    , (Clone, 2)
+    , (OrangeClone, 2)
+    , (RedSpider, 2) -- (I hope this RedSpider doesn't kill too many people)
+    , (Clone, 4)
+
+    -- With those new enemies established, let's play a bit!
+    , (OrangeClone, 3)
+    , (Clone, 3)
+    , (Spider, 3)
+    , (PurpleSpider, 3)
+    , (OrangeClone, 3)
+    , (RedSpider, 3)
+    , (GreenRat, 3)
+    , (OrangeClone, 3)
+    , (BlueRat, 3)
+    , (Clone, 3)
+    , (Rat, 5)
+    , (GiantRat, 3)
+    , (GiantSpider, 2) -- This GiantSpider here is tough! Let's give the hint with 2 hits then
+    , (OrangeClone, 3)
+
+    , (YellowClone, 0) -- Final teaching section for the level!
+    , (Clone, 3) -- Let's take a break from the random stuff and focus on the clones
+    , (YellowClone, 1)
+    , (OrangeClone, 2)
+    , (YellowClone, 2)
+    , (Clone, 3)
+    , (OrangeClone, 3)
+    , (Clone, 3)
+    , (YellowClone, 3)
+
+    -- And then the final section!
+    , (Rat, 5)
+    , (Clone, 4)
+    , (PurpleSpider, 3)
+    , (YellowClone, 3)
+    , (RedSpider, 3)
+    , (BlueRat, 4)
+    , (OrangeClone, 3)
+    , (Spider, 4)
+    , (GiantSpider, 3)
+    , (PurpleSpider, 3)
+    , (YellowClone, 3)
+    , (RedSpider, 3)
+    , (GiantRat, 3)
+    , (GiantSpider, 3)
+    , (Clone, 4)
+    , (GreenRat, 3)
+    , (YellowClone, 3)
+    , (YellowClone, 3)
+    , (GreenRat, 3)
+
+    -- Small Clone rush to end the level
+    , (Clone, 3)
+    , (Clone, 3)
+    , (OrangeClone, 3)
+    , (OrangeClone, 3)
+    , (YellowClone, 3)
+    , (YellowClone, 3)
+
+    ]
 
 maxHealth :: Nat
 maxHealth = nat 10
@@ -308,22 +508,7 @@ mkLevel :: Functor f => f (Enemy, Natural) -> f EnemyEncounter
 mkLevel = fmap (uncurry $ flip $ flip MkEnemyEncounter . nat)
 
 allLevels :: LevelZipper
-allLevels = MkLevelZipper [] testLevel [firstLevel]
-
-firstLevel :: NonEmpty EnemyEncounter
-firstLevel = mkLevel $
-      (Rat, 0) :|
-    [ (Rat, 1)
-    , (Rat, 2)
-    , (BlueRat, 0)
-    , (BlueRat, 2)
-    , (Rat, 3)
-    , (BlueRat, 3)
-    , (Rat, 3)
-    , (Rat, 3)
-    , (BlueRat, 3)
-    , (BlueRat, 3)
-    ]
+allLevels = MkLevelZipper [] firstLevel [secondLevel, thirdLevel]
 
 initialScene :: Scene
 initialScene = TitleScreen
@@ -345,7 +530,6 @@ testLevel = mkLevel $
     , (PurpleSpider, 0)
     , (Rat, 0)
     , (Spider, 0)
-    -- , GrassTileEnemy
     ]
 
 loadLevel :: Level -> GameState
