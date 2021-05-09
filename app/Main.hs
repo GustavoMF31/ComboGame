@@ -291,8 +291,10 @@ comboToDefeat OrangeClone = KeyO :| [KeyM, KeyI, KeyJ, KeyU]
 -- YellowClone has 7 keys, but it's not that hard since it's palindromic
 comboToDefeat YellowClone = KeyI :| [KeyK, KeyM, KeyJ, KeyM, KeyK, KeyI]
 
+-- The first two skeletons are a trip through all the keys
 comboToDefeat Skeleton       = KeyL :| [KeyK, KeyM, KeyJ, KeyU, KeyI, KeyO]
 comboToDefeat BronzeSkeleton = KeyK :| [KeyL, KeyO, KeyI, KeyU, KeyJ, KeyM]
+-- While the GoldenSkeleton has a longer but more repetitive sequence
 comboToDefeat GoldenSkeleton = KeyO :| [KeyK, KeyM, KeyO, KeyK, KeyM, KeyL, KeyK, KeyJ]
 
 firstLevel :: NonEmpty EnemyEncounter
@@ -488,7 +490,91 @@ thirdLevel = mkLevel $
     , (OrangeClone, 3)
     , (YellowClone, 3)
     , (YellowClone, 3)
+    ]
 
+fourthLevel :: NonEmpty EnemyEncounter
+fourthLevel = mkLevel $
+      (Skeleton, 0) :| -- Start with something new
+    [ (Skeleton, 1)  -- Skeletons are hard, let's practice quite a bit
+    , (Skeleton, 2)
+    , (Skeleton, 3)
+
+    -- A bit more of practice, now mixing it up
+    , (Clone, 3)
+    , (Skeleton, 3)
+    , (GiantSpider, 3)
+    , (Skeleton, 3)
+    , (Skeleton, 4)
+    , (YellowClone, 3)
+    , (Spider, 3)
+
+    , (BronzeSkeleton, 0) -- And the new skeleton (Skeletons are hard, let the player practice)
+    , (BronzeSkeleton, 1)
+    , (BronzeSkeleton, 2)
+    , (BronzeSkeleton, 3)
+
+    -- Skeleton attack
+    , (Skeleton, 2)
+    , (BronzeSkeleton, 2)
+    , (Skeleton, 3)
+    , (BronzeSkeleton, 3)
+    , (BronzeSkeleton, 3)
+    , (Skeleton, 3)
+
+    -- Miscelaneous secion with varied enemies
+    , (GreenRat, 3)
+    , (BronzeSkeleton, 2)
+    , (PurpleSpider, 3)
+    , (Skeleton, 2)
+    , (BlueRat, 3)
+    , (BronzeSkeleton, 2)
+    , (OrangeClone, 3)
+    , (Skeleton, 2)
+    , (RedSpider, 3)
+    , (OrangeClone, 2) -- This orange clone here will be kind of hard, therefore give the hint with just 2 hits
+    , (GiantRat, 3)
+
+    -- And now the final new enemy!
+    , (GoldenSkeleton, 0) -- GoldenSkeleton is not as hard as the others
+    , (Skeleton, 3) -- Let's distract the player...
+    , (BronzeSkeleton, 3)
+    , (Clone, 3)
+    , (GoldenSkeleton, 2) -- Then quiz! (But hint in 2, let's not be too harsh)
+    , (GoldenSkeleton, 3)
+    , (GoldenSkeleton, 4)
+
+    -- A bit of playing with the more recent stuff (Clones and Skeletons)
+    , (OrangeClone, 3)
+    , (BronzeSkeleton, 3)
+    , (Clone, 3)
+    , (GoldenSkeleton, 3)
+    , (YellowClone, 3)
+    , (Skeleton, 3)
+    , (GoldenSkeleton, 3)
+    , (OrangeClone, 3)
+    , (BronzeSkeleton, 3)
+    , (YellowClone, 3)
+    , (Skeleton, 3)
+    , (Clone, 3)
+    , (GoldenSkeleton, 3)
+    , (GoldenSkeleton, 3)
+
+    -- Now it's victory road! Everyone is here!
+    -- (The player contemplates one by one every enemy they've learned to beat)
+    , (Rat, 4)
+    , (BlueRat, 4)
+    , (GreenRat, 4)
+    , (GiantRat, 4)
+    , (Spider, 4)
+    , (PurpleSpider, 4)
+    , (RedSpider, 4)
+    , (GiantSpider, 4)
+    , (Clone, 4)
+    , (OrangeClone, 4)
+    , (YellowClone, 4)
+    , (Skeleton, 4)
+    , (BronzeSkeleton, 4)
+    , (GoldenSkeleton, 4)
     ]
 
 maxHealth :: Nat
@@ -508,11 +594,12 @@ mkLevel :: Functor f => f (Enemy, Natural) -> f EnemyEncounter
 mkLevel = fmap (uncurry $ flip $ flip MkEnemyEncounter . nat)
 
 allLevels :: LevelZipper
-allLevels = MkLevelZipper [] firstLevel [secondLevel, thirdLevel]
+allLevels = MkLevelZipper [] firstLevel [secondLevel, thirdLevel, fourthLevel]
 
 initialScene :: Scene
 initialScene = TitleScreen
 
+{-
 testLevel :: Level
 testLevel = mkLevel $
       (Clone, 0) :|
@@ -531,6 +618,7 @@ testLevel = mkLevel $
     , (Rat, 0)
     , (Spider, 0)
     ]
+-}
 
 loadLevel :: Level -> GameState
 loadLevel level = MkGameState
@@ -880,6 +968,10 @@ render textures renderer windowDimensions gameState = do
         Just attackKey -> copy renderer (comboKeyAttackPose attackKey textures) Nothing
             (Just $ moveRectangle (P $ V2 150 0) attackingFighterRect)
 
+    -- Hint:
+    when (shouldDisplayHint gameState && not (isJust $ levelRestartEffect gameState)) $
+        drawKeysToPressHint renderer textures gameState windowDimensions
+
     -- Health bar:
     let healthBarPos = P $ V2 80 700
 
@@ -887,12 +979,9 @@ render textures renderer windowDimensions gameState = do
     rendererDrawColor renderer $= white
     fillRect renderer $ Just $ Rectangle healthBarPos (V2 200 20)
 
-    when (shouldDisplayHint gameState && not (isJust $ levelRestartEffect gameState)) $
-        drawKeysToPressHint renderer textures gameState windowDimensions
-
     -- Red indicator
     rendererDrawColor renderer $= red
-    fillRect renderer $ Just $ Rectangle healthBarPos (V2 (round $ 200 * (natAsDouble $ playerHealth gameState) / natAsDouble maxHealth) 20)
+    fillRect renderer $ Just $ Rectangle healthBarPos (V2 (round $ 200 * (natAsDouble $ natAdd (nat 1) (playerHealth gameState)) / (1 + natAsDouble maxHealth)) 20)
 
     -- Flying enemy effect
 
@@ -1037,9 +1126,7 @@ main = do
 
 {-
 TODO
-
-    Goal: 5 Levels
-        (Estimating 10 to 12 encounters each)
+    Make the health bar more intuitive
 
 Optional:
     Different looking floor tiles for each level
