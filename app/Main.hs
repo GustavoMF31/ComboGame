@@ -811,13 +811,13 @@ update events delta levelZipper gameState = maybe ((, []) $ maybe GameWonScreen 
 alreadyPressed :: GameState -> [ComboKey]
 alreadyPressed g = reverse $ drop (length $ comboKeysLeft g) $ reverse $ NonEmpty.toList $ comboToDefeat (currentEnemy g)
 
-gameLoop :: Renderer -> TextureData -> AudioData -> V2 CInt -> Word32 -> Scene -> IO ()
-gameLoop renderer textures audioData windowDimensions ticksSinceLastUpdate scene = do
-    let loop = gameLoop renderer textures audioData windowDimensions
+gameLoop :: Renderer -> TextureData -> AudioData -> Word32 -> Scene -> IO ()
+gameLoop renderer textures audioData ticksSinceLastUpdate scene = do
+    let loop = gameLoop renderer textures audioData
 
     events <- pollEvents
 
-    renderScene textures renderer windowDimensions scene
+    renderScene textures renderer scene
     present renderer
 
     now <- ticks
@@ -885,9 +885,9 @@ currentEnemy = encounterEnemy . currentEncounter
 shouldDisplayHint :: GameState -> Bool
 shouldDisplayHint gameState = hitsTakenBeforeShowingHint (currentEncounter gameState) <= hitsTakenDueToCurrentEnemy gameState
 
-renderScene :: TextureData -> Renderer -> V2 CInt -> Scene -> IO ()
-renderScene textures renderer windowDimensions scene = case scene of
-    InGame _ gameState -> render textures renderer windowDimensions gameState
+renderScene :: TextureData -> Renderer -> Scene -> IO ()
+renderScene textures renderer scene = case scene of
+    InGame _ gameState -> render textures renderer gameState
     TitleScreen -> do
         renderBackground textures renderer
 
@@ -922,8 +922,8 @@ red = V4 255 0 0 255
 levelRestartEffectDuration :: Nat
 levelRestartEffectDuration = nat 1600
 
-render :: TextureData -> Renderer -> V2 CInt -> GameState -> IO ()
-render textures renderer windowDimensions gameState = do
+render :: TextureData -> Renderer -> GameState -> IO ()
+render textures renderer gameState = do
     
     renderBackground textures renderer
 
@@ -970,7 +970,7 @@ render textures renderer windowDimensions gameState = do
 
     -- Hint:
     when (shouldDisplayHint gameState && not (isJust $ levelRestartEffect gameState)) $
-        drawKeysToPressHint renderer textures gameState windowDimensions
+        drawKeysToPressHint renderer textures gameState
 
     -- Health bar:
     let healthBarPos = P $ V2 80 700
@@ -1035,14 +1035,14 @@ currentEffectOffset effect = P $ V2 (round $ flyAwaySpeed * sin radians * timeAl
 whenJust :: Applicative m => Maybe a -> (a -> m ()) -> m ()
 whenJust x f = maybe (pure ()) f x
 
-drawKeysToPressHint :: Renderer -> TextureData -> GameState -> V2 CInt -> IO ()
-drawKeysToPressHint renderer textures gameState windowDimensions = do
+drawKeysToPressHint :: Renderer -> TextureData -> GameState -> IO ()
+drawKeysToPressHint renderer textures gameState = do
 
     let pressedKeys = alreadyPressed gameState
         keysYetToBePressed = comboKeysLeft gameState
         totalKeyDisplayWidth = fromIntegral keyIconSize * (length pressedKeys + length keysYetToBePressed)
-        (V2 screenWidth _) = windowDimensions
         keyDisplayXCoord :: Double
+        -- The game draws relative to a screen of size 
         keyDisplayXCoord = fromIntegral screenWidth / 2 - fromIntegral totalKeyDisplayWidth / 2
 
     -- Draw the UI elements that represent the keys the user has pressed and has yet to press
@@ -1096,6 +1096,12 @@ loadGameTextures renderer = MkTextureData
     png :: String -> String
     png x = "assets/" ++ x ++ ".png"
 
+screenWidth :: CInt
+screenWidth = 1366
+
+screenHeight :: CInt
+screenHeight = 768
+
 main :: IO ()
 main = do
     initializeAll
@@ -1104,18 +1110,16 @@ main = do
     setWindowMode window FullscreenDesktop
 
     renderer <- createRenderer window (-1) defaultRenderer { rendererType = AcceleratedVSyncRenderer }
-    rendererLogicalSize renderer $= Just (V2 1366 768)
+    rendererLogicalSize renderer $= Just (V2 screenWidth screenHeight)
 
     initialTicks <- ticks
     textures <- loadGameTextures renderer
-    windowDimensions <- get $ windowSize window
-    -- firstMousePos <- getAbsoluteMouseLocation
 
     Mix.initialize [Mix.InitMP3]
     Mix.openAudio def 256
 
     audioData <- loadAudioData
-    gameLoop renderer textures audioData windowDimensions initialTicks initialScene
+    gameLoop renderer textures audioData initialTicks initialScene
 
     freeAudioData audioData
     Mix.closeAudio
@@ -1125,9 +1129,6 @@ main = do
     quit
 
 {-
-TODO
-    Make the health bar more intuitive
-
 Optional:
     Different looking floor tiles for each level
     Keys per second bonus - Fast = Good (give health back)
