@@ -3,37 +3,34 @@
 
 {-# LANGUAGE OverloadedStrings, TupleSections #-}
 
-import Control.Monad (when, (<=<), guard, join)
+import Control.Monad (when, (<=<), join)
 import Data.Foldable (traverse_)
 import Data.Maybe (mapMaybe, listToMaybe, isNothing, isJust)
 import Data.Bool (bool)
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Functor (($>))
 
 import Foreign.C.Types (CInt, CDouble(CDouble))
 import Data.Word (Word32, Word8)
 import Numeric.Natural (Natural)
 
 import Nat (Nat, nat, natMinus, natAsDouble, natAdd, monus)
+import SDLUtils
+    ( sdlLoaderFullscreenMain
+    , screenWidth
+    , getScancode
+    , ensure
+    , isPressed
+    , getKeyboardEvent
+    , isEnterPressed
+    , shouldQuit
+    , wasScancodeReleased
+    , moveRectangle
+    )
 
-import Data.Default.Class (def)
 import SDL hiding (angle)
 import SDL.Image (loadTexture)
 import qualified SDL.Mixer as Mix
-
-getScancode :: KeyboardEventData -> Scancode
-getScancode = keysymScancode . keyboardEventKeysym
-
-getKeycode :: KeyboardEventData -> Keycode
-getKeycode = keysymKeycode . keyboardEventKeysym
-
-getKeyboardEvent :: EventPayload -> Maybe KeyboardEventData
-getKeyboardEvent (KeyboardEvent event) = Just event
-getKeyboardEvent _ = Nothing 
-
-shouldQuit :: [Event] -> Bool
-shouldQuit = any $ (QuitEvent ==) . eventPayload
 
 type Combo = NonEmpty ComboKey
 data Enemy
@@ -106,7 +103,7 @@ loadAudioData = MkAudioData
   where
     mp3 :: String -> String
     mp3 x = "assets/" ++ x ++ ".mp3"
- 
+
 freeAudioData :: AudioData -> IO ()
 freeAudioData (MkAudioData a b c d e f g) = do
     Mix.free a
@@ -641,15 +638,6 @@ loadLevel level = MkGameState
     initialEnemy = encounterEnemy initialEncounter
     initialEncounter = NonEmpty.head $ level
 
-ensure :: (a -> Bool) -> a -> Maybe a
-ensure p a = guard (p a) $> a
-
-isPressed :: KeyboardEventData -> Bool
-isPressed = (== Pressed) . keyboardEventKeyMotion
-
-isReleased :: KeyboardEventData -> Bool
-isReleased = (== Released) . keyboardEventKeyMotion
-
 asComboKey :: Scancode -> Maybe ComboKey
 asComboKey ScancodeK = Just KeyK
 asComboKey ScancodeJ = Just KeyJ
@@ -673,20 +661,16 @@ comboKeyAsScancode KeyM = ScancodeM
 -- comboKeyAsScancode KeyComma = ScancodeComma
 -- comboKeyAsScancode KeyPeriod = ScancodePeriod
 
-isEnterPressed :: [Event] -> Bool
-isEnterPressed = not . null . (mapMaybe $ ensure (== KeycodeReturn) <=< fmap getKeycode . ensure isPressed <=< getKeyboardEvent . eventPayload)
-
 getComboInputs :: [Event] -> [ComboKey]
 getComboInputs = mapMaybe $ asComboKey <=< fmap getScancode . ensure isPressed <=< getKeyboardEvent . eventPayload
 
-wasReleased :: ComboKey -> [Event] -> Bool
-wasReleased key = not . null . mapMaybe
-    (ensure (== comboKeyAsScancode key) <=< fmap getScancode . ensure isReleased <=< getKeyboardEvent . eventPayload)
+wasComboKeyReleased :: ComboKey -> [Event] -> Bool
+wasComboKeyReleased = wasScancodeReleased . comboKeyAsScancode
 
 -- Process one key press from the player
 processComboKey :: Combo -> ComboKey -> Maybe [ComboKey]
 processComboKey keysLeft key = if key == NonEmpty.head keysLeft
-    then Just $ NonEmpty.tail keysLeft 
+    then Just $ NonEmpty.tail keysLeft
     else Nothing
 
 flyingEnemyEffectTime :: Nat
@@ -787,7 +771,7 @@ update events delta levelZipper gameState = maybe ((, []) $ maybe GameWonScreen 
                 Just xs -> Just (xs, True, Nothing)
 
     resetCurrentAttackIfNecessary :: Maybe ComboKey
-    resetCurrentAttackIfNecessary = wasReleased <$> currentAttack gameState <*> pure events
+    resetCurrentAttackIfNecessary = wasComboKeyReleased <$> currentAttack gameState <*> pure events
         >>= bool (currentAttack gameState) Nothing
 
     -- Nothing means that the enemy attacked
@@ -811,18 +795,18 @@ update events delta levelZipper gameState = maybe ((, []) $ maybe GameWonScreen 
 alreadyPressed :: GameState -> [ComboKey]
 alreadyPressed g = reverse $ drop (length $ comboKeysLeft g) $ reverse $ NonEmpty.toList $ comboToDefeat (currentEnemy g)
 
-gameLoop :: Renderer -> TextureData -> AudioData -> Word32 -> Scene -> IO ()
-gameLoop renderer textures audioData ticksSinceLastUpdate scene = do
-    let loop = gameLoop renderer textures audioData
+gameLoop :: Scene -> Renderer -> TextureData -> AudioData -> Word32 -> IO ()
+gameLoop currentScene renderer textures audioData ticksSinceLastUpdate = do
+    let loop = \now scene -> gameLoop scene renderer textures audioData now
 
     events <- pollEvents
 
-    renderScene textures renderer scene
+    renderScene textures renderer currentScene
     present renderer
 
     now <- ticks
     let deltaTime = now - ticksSinceLastUpdate
-        (newScene, soundEffects) = updateScene events (nat $ fromIntegral deltaTime) scene
+        (newScene, soundEffects) = updateScene events (nat $ fromIntegral deltaTime) currentScene
 
     if not $ shouldQuit events
       -- This use of fromIntegral can crash if deltaTime is negative
@@ -875,9 +859,6 @@ getKeyRect :: Bool -> ComboKey -> Rectangle CInt
 getKeyRect pressed = (square 16 . P . flip V2 y . (*16)) . getKeyIndex
   where
     y = if pressed then 16 else 0
-
-moveRectangle :: Point V2 CInt -> Rectangle CInt -> Rectangle CInt
-moveRectangle p (Rectangle p' size) = Rectangle (p' + p) size
 
 currentEnemy :: GameState -> Enemy
 currentEnemy = encounterEnemy . currentEncounter
@@ -1096,37 +1077,8 @@ loadGameTextures renderer = MkTextureData
     png :: String -> String
     png x = "assets/" ++ x ++ ".png"
 
-screenWidth :: CInt
-screenWidth = 1366
-
-screenHeight :: CInt
-screenHeight = 768
-
 main :: IO ()
-main = do
-    initializeAll
-
-    window <- createWindow "Combo!" defaultWindow
-    setWindowMode window FullscreenDesktop
-
-    renderer <- createRenderer window (-1) defaultRenderer { rendererType = AcceleratedVSyncRenderer }
-    rendererLogicalSize renderer $= Just (V2 screenWidth screenHeight)
-
-    initialTicks <- ticks
-    textures <- loadGameTextures renderer
-
-    Mix.initialize [Mix.InitMP3]
-    Mix.openAudio def 256
-
-    audioData <- loadAudioData
-    gameLoop renderer textures audioData initialTicks initialScene
-
-    freeAudioData audioData
-    Mix.closeAudio
-    Mix.quit
-
-    -- quit SDL
-    quit
+main = sdlLoaderFullscreenMain "Combo!" loadGameTextures loadAudioData freeAudioData $ gameLoop initialScene
 
 {-
 Optional:

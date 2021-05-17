@@ -25,12 +25,13 @@ executable ComboGame
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules: Nat
+    other-modules: Nat, SDLUtils
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:
       base ^>=4.12.0.0,
+      text,
       sdl2,
       sdl2-image,
       sdl2-mixer,
